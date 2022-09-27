@@ -1,5 +1,9 @@
 package org.apache.flink.streaming.connectors.mongodb.sink;
 
+import com.mongodb.client.model.InsertOneModel;
+import com.mongodb.client.model.UpdateOneModel;
+import com.mongodb.client.model.UpdateOptions;
+import com.mongodb.client.model.WriteModel;
 import org.apache.flink.table.connector.sink.DynamicTableSink;
 import org.apache.flink.table.data.RowData;
 import org.apache.flink.types.Row;
@@ -31,12 +35,22 @@ public class MongodbUpsertSinkFunction extends MongodbBaseSinkFunction<RowData> 
      * @return
      */
     @Override
-    Document invokeDocument(RowData value, Context context) {
+    WriteModel<Document> invokeDocument(RowData value, Context context) {
         Row row = (Row) this.converter.toExternal(value);
-        Map<String, Object> map = new HashMap();
+        Map<String, Object> map = new HashMap<String, Object>();
         for (int i = 0; i < this.fieldNames.length; i++) {
             map.put(this.fieldNames[i], row.getField(i));
         }
-        return new Document(map);
+        if (map.containsKey("k") && map.containsKey("hk") && map.containsKey("hv")) {
+            // source: k, hk, hv
+            // dest: k, v{hk,hv}
+            String hk = String.format("v.%s", map.get("hk"));
+            return new UpdateOneModel<Document>(new Document("k", map.get("k")),
+                    new Document("$set", new Document(hk, map.get("hv"))),
+                    new UpdateOptions().upsert(true));
+        }
+        System.out.printf("insert model..");
+        return new InsertOneModel<>(new Document(map));
+
     }
 }

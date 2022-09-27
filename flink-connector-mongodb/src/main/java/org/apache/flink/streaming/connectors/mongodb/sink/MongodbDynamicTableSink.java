@@ -22,7 +22,8 @@ public class MongodbDynamicTableSink implements DynamicTableSink {
     @Override
     public ChangelogMode getChangelogMode(ChangelogMode changelogMode) {
         // I、-U、+U、D
-        return ChangelogMode.insertOnly();
+//        return ChangelogMode.insertOnly();
+        return ChangelogMode.all();
     }
 
     @Override

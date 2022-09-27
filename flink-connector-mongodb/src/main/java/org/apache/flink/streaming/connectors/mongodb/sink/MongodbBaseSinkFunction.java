@@ -3,8 +3,12 @@ package org.apache.flink.streaming.connectors.mongodb.sink;
 import com.mongodb.MongoClient;
 import com.mongodb.MongoClientOptions;
 import com.mongodb.MongoClientURI;
+import com.mongodb.MongoException;
+import com.mongodb.bulk.BulkWriteResult;
 import com.mongodb.client.MongoCollection;
 import com.mongodb.client.MongoDatabase;
+import com.mongodb.client.model.BulkWriteOptions;
+import com.mongodb.client.model.WriteModel;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.runtime.state.FunctionInitializationContext;
 import org.apache.flink.runtime.state.FunctionSnapshotContext;
@@ -23,7 +27,7 @@ import java.util.List;
 public abstract class MongodbBaseSinkFunction<IN> extends RichSinkFunction<IN> implements CheckpointedFunction {
     private final MongodbSinkConf mongodbSinkConf;
     private transient MongoClient client;
-    private transient List<Document> batch;
+    private transient List<WriteModel<Document>> batch;
 
     protected MongodbBaseSinkFunction(MongodbSinkConf mongodbSinkConf) {
         this.mongodbSinkConf = mongodbSinkConf;
@@ -34,7 +38,7 @@ public abstract class MongodbBaseSinkFunction<IN> extends RichSinkFunction<IN> i
         super.open(parameters);
 
         this.client = new MongoClient(new MongoClientURI(this.mongodbSinkConf.getUri(), getOptions(this.mongodbSinkConf.getMaxConnectionIdleTime())));
-        this.batch = new ArrayList();
+        this.batch = new ArrayList<WriteModel<Document>>();
     }
 
     private MongoClientOptions.Builder getOptions(int maxConnectionIdleTime) {
@@ -75,10 +79,17 @@ public abstract class MongodbBaseSinkFunction<IN> extends RichSinkFunction<IN> i
         MongoDatabase mongoDatabase = this.client.getDatabase(this.mongodbSinkConf.getDatabase());
 
         MongoCollection<Document> mongoCollection = mongoDatabase.getCollection(this.mongodbSinkConf.getCollection());
-        mongoCollection.insertMany(this.batch);
-
+        try {
+            BulkWriteResult result = mongoCollection.bulkWrite(this.batch);
+            System.out.println("Bulk Result statistics:" +
+                    "\ninserted: " + result.getInsertedCount() +
+                    "\nupdated: " + result.getModifiedCount() +
+                    "\ndeleted: " + result.getDeletedCount());
+        } catch (MongoException me) {
+            System.err.println("The bulk write operation failed due to an error: " + me);
+        }
         this.batch.clear();
     }
 
-    abstract Document invokeDocument(IN paramIN, Context paramContext) throws Exception;
+    abstract WriteModel<Document> invokeDocument(IN paramIN, Context paramContext) throws Exception;
 }
